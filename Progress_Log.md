@@ -37,9 +37,36 @@
 - The `liva-ai/swahili-ASR` dataset had incorrect text labels (English), so I switched to ALFFA.
 - The ALFFA dataset uses Kaldi format, which requires custom parsing scripts instead of direct Hugging Face `load_dataset`.
 
+**Phase 2: Data Preprocessing**
+- Parsed the ALFFA Kaldi-style `wav.scp` and `text` files.
+- Indexed all audio files in the dataset directory (found 10,180 files).
+- Successfully resolved audio paths for all 10,180 utterances using multiple fallback strategies.
+- Split the data into:
+  - Train: 8,144 samples (80%)
+  - Validation: 1,018 samples (10%)
+  - Test: 1,018 samples (10%)
+- Built a Byte-Pair Encoding (BPE) tokenizer on the Swahili transcripts:
+  - Vocabulary size: 5,000
+  - Saved to: `data/processed/alffa_sw/tokenizer.json`
+- Converted the dataset to Hugging Face `DatasetDict` format with audio resampling to 16 kHz.
+- Saved the dataset to `data/processed/alffa_sw/`.
+- Saved metadata including character set, vocabulary size, and sample counts.
+
+**Key Metrics from Phase 2**:
+- Total utterances: 10,180
+- Train: 8,144
+- Validation: 1,018
+- Test: 1,018
+- Vocabulary size: 5,000
+- Sample rate: 16,000 Hz
+
+### Challenges Faced
+- Audio paths in `wav.scp` did not match the actual file locations. Fixed by building a comprehensive index of all audio files in the dataset directory and using multiple resolution strategies.
+- None of the audio paths resolved using the original method; implemented fallback strategies (basename matching, utterance ID matching, directory recursion).
+
 ### Next Steps
-- Phase 2: Preprocess the ALFFA dataset.
-  - Resample all audio to 16 kHz mono WAV.
-  - Build a Byte-Pair Encoding (BPE) tokenizer on the Swahili text.
-  - Convert the Kaldi data into Hugging Face `DatasetDict` format.
-  - Save the preprocessed dataset to disk.
+- Phase 3: Model Fine-Tuning on Google Colab or local GPU.
+  - Load the preprocessed dataset.
+  - Load a pre-trained wav2vec 2.0 model (`facebook/wav2vec2-xls-r-300m`).
+  - Configure training arguments and run fine-tuning.
+  - Save model checkpoints.
