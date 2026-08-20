@@ -1,0 +1,37 @@
+# Python Virtual Environment (THIS IS YOUR 7k FILES)
+swahili_stt_env/
+venv/
+env/
+
+# PyTorch & Hugging Face Caches (downloads models later)
+*.pyc
+__pycache__/
+.cache/
+.cache/huggingface/
+.cache/torch/
+.ipynb_checkpoints/
+
+# Data folders (audio files are huge!)
+data/raw/
+data/processed/
+*.wav
+*.mp3
+*.flac
+
+# Model checkpoints (can be multiple GBs)
+models/checkpoints/
+*.pt
+*.pth
+*.bin
+*.h5
+
+# IDE and OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and experiment tracking
+wandb/
+logs/
+*.log
