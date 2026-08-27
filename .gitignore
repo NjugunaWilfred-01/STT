@@ -1,37 +1,151 @@
-# Python Virtual Environment (THIS IS YOUR 7k FILES)
-swahili_stt_env/
+# ============================================
+# Python bytecode and cache files
+# ============================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.dll
+*.egg-info/
+*.egg
+dist/
+build/
+*.spec
+
+# ============================================
+# Virtual environment (ksl_env)
+# ============================================
+ksl_env/
 venv/
 env/
+.venv/
+.env/
+ENV/
+env.bak/
+venv.bak/
 
-# PyTorch & Hugging Face Caches (downloads models later)
-*.pyc
-__pycache__/
-.cache/
-.cache/huggingface/
-.cache/torch/
+# ============================================
+# Jupyter Notebook
+# ============================================
 .ipynb_checkpoints/
+*.ipynb_checkpoints
+*.ipynb~ 
 
-# Data folders (audio files are huge!)
+# ============================================
+# Data files (RAW and PROCESSED)
+# ============================================
+# Raw dataset from Kaggle (archive folder)
 data/raw/
+archive/
+*.zip
+*.tar.gz
+*.rar
+*.7z
+KSL_project/scripts/data/processed/
+
+# Processed keypoints (numpy arrays)
 data/processed/
-*.wav
-*.mp3
-*.flac
+*.npy
+*.npz
 
-# Model checkpoints (can be multiple GBs)
-models/checkpoints/
-*.pt
-*.pth
-*.bin
+# CSV files that are derived from the dataset
+*.csv
+*.xlsx
+*.xls
+
+# ============================================
+# Model files (trained models)
+# ============================================
+models/
 *.h5
+*.hdf5
+*.pb
+*.pkl
+*.pickle
+checkpoints/
+*.weights.h5
+*.model
 
-# IDE and OS junk
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-
-# Logs and experiment tracking
-wandb/
+# ============================================
+# Logs and temporary files
+# ============================================
 logs/
 *.log
+*.out
+*.err
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ============================================
+# IDE and editor files
+# ============================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Spyder
+.spyproject/
+
+# ============================================
+# Operating system junk files
+# ============================================
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# Linux
+*.swp
+*.swo
+*~
+\#*#
+.\#*
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ============================================
+# Testing and coverage
+# ============================================
+.coverage
+htmlcov/
+.coverage.*
+*.cover
+.pytest_cache/
+.tox/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ============================================
+# GitHub and documentation
+# ============================================
+*.md~
+*.pdf~
+*.tex~
+
+# ============================================
+# TensorFlow / Keras
+# ============================================
+*.tflite
+*.onnx
+*.onnx.data
