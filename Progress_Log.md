@@ -1,72 +1,128 @@
-# Project Journal: Swahili Speech-to-Text
+# KSL-to-Text Translator: Master To-Do List
 
-## 2026-08-20
+**Project:** Real-time Kenyan Sign Language (KSL) to Text Translator  
+**Approach:** Pose-Estimation (MediaPipe Holistic) + LSTM/Transformer  
+**Dataset:** Kaggle KSL Video Dataset (2,237 videos, 30 classes)  
+**Last Updated:** [Insert Today's Date]
 
-### What I Accomplished Today
+---
 
-**Phase 0: Environment Setup**
-- Created a Python 3.12.3 virtual environment named `swahili_stt_env`.
-- Installed core dependencies: PyTorch, Hugging Face libraries (transformers, datasets, tokenizers, accelerate), audio processing libraries (librosa, soundfile), and evaluation tools (jiwer).
-- Authenticated with Hugging Face Hub using `huggingface-cli login` to enable faster downloads.
-- Set up the project folder structure:
-  - `data/raw/` for raw datasets
-  - `data/processed/` for preprocessed data
-  - `models/checkpoints/` for model checkpoints
-  - `src/` for Python source code
-- Created a `.gitignore` file to exclude the virtual environment, data files, and checkpoints from version control.
+## PHASE 0: Environment Setup
+**Status:** COMPLETED
 
-**Phase 1: Data Acquisition and Exploration**
-- Researched available Swahili ASR datasets.
-- Attempted to load `mozilla-foundation/common_voice_17_0` but discovered it is now gated and requires access through the Mozilla Data Collective platform.
-- Attempted `liva-ai/swahili-ASR` but found the `text` column contained English translations and speaker metadata, not Swahili transcriptions.
-- Selected the **ALFFA Swahili Broadcast News Corpus** as the primary dataset for Phase 1 due to its MIT license and public availability.
-- Downloaded `data_broadcastnews_sw.tar.bz2` (~1.2 GB) from OpenSLR.
-- Wrote `src/02_extract_alffa.py` to extract the archive.
-- Extracted the dataset to `data/raw/alffa_sw/`.
-- Verified the Kaldi-style structure: `wav.scp` and `text` files.
-- Wrote `src/01_explore_alffa.py` to:
-  - Parse the `text` and `wav.scp` files.
-  - Match utterance IDs between text and audio.
-  - Print sample Swahili sentences.
-  - Analyze unique characters in the transcripts.
-  - Count total utterances (~12,171) and estimate audio duration (~11.75 hours).
-- Confirmed the dataset contains actual Swahili text (not English or metadata).
+- [x] Installed Python 3.9+
+- [x] Created and activated virtual environment (`ksl_env`)
+- [x] Installed dependencies: `opencv-python`, `mediapipe`, `numpy`, `tensorflow`, `pandas`, `scikit-learn`
+- [x] Created project folders: `data/`, `models/`, `scripts/`, `notebooks/`
+- [x] Downloaded Kaggle dataset (currently downloading/ready)
 
-### Challenges Faced
-- Common Voice 17.0 is gated; I will need to request access through Mozilla Data Collective for the full dataset later.
-- The `liva-ai/swahili-ASR` dataset had incorrect text labels (English), so I switched to ALFFA.
-- The ALFFA dataset uses Kaldi format, which requires custom parsing scripts instead of direct Hugging Face `load_dataset`.
+---
 
-**Phase 2: Data Preprocessing**
-- Parsed the ALFFA Kaldi-style `wav.scp` and `text` files.
-- Indexed all audio files in the dataset directory (found 10,180 files).
-- Successfully resolved audio paths for all 10,180 utterances using multiple fallback strategies.
-- Split the data into:
-  - Train: 8,144 samples (80%)
-  - Validation: 1,018 samples (10%)
-  - Test: 1,018 samples (10%)
-- Built a Byte-Pair Encoding (BPE) tokenizer on the Swahili transcripts:
-  - Vocabulary size: 5,000
-  - Saved to: `data/processed/alffa_sw/tokenizer.json`
-- Converted the dataset to Hugging Face `DatasetDict` format with audio resampling to 16 kHz.
-- Saved the dataset to `data/processed/alffa_sw/`.
-- Saved metadata including character set, vocabulary size, and sample counts.
+## PHASE 1: Keypoint Extraction from Kaggle Videos
+**Status:** COMPLETED
 
-**Key Metrics from Phase 2**:
-- Total utterances: 10,180
-- Train: 8,144
-- Validation: 1,018
-- Test: 1,018
-- Vocabulary size: 5,000
-- Sample rate: 16,000 Hz
+**Goal:** Convert all 2,237 downloaded `.mov` videos into `.npy` keypoint sequences using MediaPipe Holistic.
 
-### Challenges Faced
-- Audio paths in `wav.scp` did not match the actual file locations. Fixed by building a comprehensive index of all audio files in the dataset directory and using multiple resolution strategies.
-- None of the audio paths resolved using the original method; implemented fallback strategies (basename matching, utterance ID matching, directory recursion).
+### Tasks:
+- [x] **Verify dataset structure:** Confirm the downloaded folder contains `train/`, `val/`, and `test/` subfolders with 30 class folders inside.
+- [x] **Update script variables:** Edit the extraction script with:
+  - [x] `DATASET_PATH =` (the exact path where you saved the Kaggle folder, e.g., `C:/Users/YourName/Downloads/ksl-video-dataset/`)
+  - [x] `VIDEO_EXTENSION =` (likely `.mov`, but check if it's `.mp4` or `.avi`)
+- [x] **Run the extraction script:** Execute `extract_ksl_keypoints.py` to process all videos.
+  - [x] Monitor progress (this will take 2–4 hours depending on your CPU).
+- [x] **Verify output:** Ensure the script generates `processed_train/`, `processed_val/`, and `processed_test/` folders containing `.npy` files.
+- [x] **Quick sanity check:** Load one `.npy` file in Python and confirm its shape is `(frames, 1662)`.
 
-### Next Steps
-- Phase 3: Model Fine-Tuning on Google Colab or local GPU.
-  - Load the preprocessed dataset.
-  - Load a pre-trained wav2vec 2.0 model (`facebook/wav2vec2-xls-r-300m`).
-  - Configure training arguments and run fine-tuning.
-  - Save model checkpoints.
+---
+
+## PHASE 2: Data Preprocessing & Augmentation
+**Status:** PLANNED
+
+**Goal:** Clean the extracted keypoints, pad/truncate sequences to a fixed length, and apply augmentation.
+
+### Tasks:
+- [x] **Normalize keypoints:** Subtract shoulder coordinates from all points to make the model position-invariant.
+- [x] **Fix sequence length:** Pad or truncate all sequences to exactly `SEQUENCE_LENGTH = 30` frames.
+  - [x] Create a mapping dictionary for labels (0 to 29).
+- [ ] **Load Kaggle splits:** Since the dataset is already split, load `processed_train/`, `processed_val/`, and `processed_test/` separately.
+- [ ] **Data Augmentation:**
+  - [ ] Horizontal flipping (mirror the x-coordinates to double your data).
+  - [ ] Add small Gaussian noise (+/- 0.01) to coordinates.
+- [ ] **Save final arrays:** Save as `X_train.npy`, `X_val.npy`, `X_test.npy`, and corresponding `y_train.npy`, `y_val.npy`, `y_test.npy` inside `data/`.
+
+---
+
+## PHASE 3: Model Architecture Design
+**Status:** PLANNED
+
+**Goal:** Build the deep learning model that maps pose sequences to sign labels.
+
+### Tasks:
+- [ ] **Choose architecture:** LSTM (baseline) or Transformer Encoder (more advanced).
+- [ ] **Define model in TensorFlow/Keras:**
+  - [ ] Input Shape: `(30, 1662)`.
+  - [ ] Hidden Layers: LSTM(128) -> LSTM(64) -> Dense(32) -> Dropout(0.3).
+  - [ ] Output Layer: `Dense(30, activation='softmax')` (because we have 30 sign classes).
+- [ ] **Compile model:** Use `adam` optimizer and `categorical_crossentropy` loss.
+- [ ] **Write `model.summary()`** and save the architecture diagram.
+
+---
+
+## PHASE 4: Model Training
+**Status:** PLANNED
+
+**Goal:** Train the model on the 1,487 training videos.
+
+### Tasks:
+- [ ] **Load data:** Load `X_train.npy`, `y_train.npy`, `X_val.npy`, `y_val.npy`.
+- [ ] **Set training parameters:** Batch size = 32, Epochs = 100, Early Stopping (patience = 10).
+- [ ] **Start training:** Run `model.fit()` and monitor validation accuracy.
+- [ ] **Save the best model:** Use `ModelCheckpoint` to save the best weights as `models/ksl_best_model.h5`.
+- [ ] **Plot loss & accuracy curves:** Save training history graphs for your report.
+
+---
+
+## PHASE 5: Evaluation
+**Status:** PLANNED
+
+**Goal:** Test your model on the 450 unseen videos in the Kaggle test set.
+
+### Tasks:
+- [ ] **Load test data:** Load `X_test.npy` and `y_test.npy`.
+- [ ] **Run evaluation:** Use `model.evaluate()` to get final test accuracy and loss.
+- [ ] **Generate Confusion Matrix:** Identify which signs the model confuses most often.
+- [ ] **Document results:** Record final accuracy, precision, recall, and F1-score.
+
+---
+
+## PHASE 6: Real-Time Deployment
+**Status:** PLANNED
+
+**Goal:** Turn on your webcam and translate KSL signs in real-time.
+
+### Tasks:
+- [ ] **Write `realtime_translator.py`:**
+  - [ ] Open webcam with OpenCV.
+  - [ ] Extract MediaPipe keypoints from each frame.
+  - [ ] Maintain a buffer of the last 30 frames.
+  - [ ] Feed the buffer to the loaded model every 5 frames.
+- [ ] **Display predictions:** Overlay the predicted text on the video feed.
+- [ ] **Add a trigger key:** (e.g., press "Spacebar" to freeze and translate a sign).
+- [ ] **Add a confidence threshold:** Only display predictions above 80% confidence.
+
+---
+
+## PHASE 7: Scaling to Continuous Translation (BONUS / FUTURE)
+**Status:** PLANNED
+
+**Goal:** Move from recognizing single words to translating full sentences (like AutoSign).
+
+### Tasks:
+- [ ] **Research CTC Loss:** Replace the current classification head with Connectionist Temporal Classification to align frames to text without per-frame labels.
+- [ ] **Collect sentence data:** Find or record continuous KSL sentences (multiple signs in a row).
+- [ ] **Integrate a Language Model:** Attach a lightweight text decoder (like a small GPT-2) to correct grammar.
+- [ ] **Deploy:** Update the real-time script to handle streaming video without a fixed 30-frame window.
+
+---
+
+## Quick Reference: File Structure
