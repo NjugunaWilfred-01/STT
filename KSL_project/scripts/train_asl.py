@@ -1,0 +1,176 @@
+import os
+import json
+import cv2
+import numpy as np
+import tensorflow as tf
+import tensorflow_hub as hub
+from tensorflow import keras
+from tensorflow.keras import layers
+from sklearn.model_selection import train_test_split
+from tqdm import tqdm
+import random
+
+# ---------- Configuration ----------
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATASET_PATH = os.path.join(PROJECT_ROOT, "data", "asl", "wlasl")           # Folder containing videos and annotations.json
+VIDEO_DIR = os.path.join(DATASET_PATH, "videos")
+ANNOTATIONS_FILE = os.path.join(DATASET_PATH, "annotations.json")
+NUM_FRAMES = 16
+IMG_SIZE = 224
+BATCH_SIZE = 8          # Small batch for GPU memory
+EPOCHS = 20
+MODEL_SAVE_PATH = os.path.join(PROJECT_ROOT, "models", "asl_pretrained.h5")
+MAX_VIDEOS = None       # Set to e.g., 1000 for quick test, None for full dataset
+
+# ---------- Load annotations ----------
+SUBSET = "nslt_100.json"          # swap for nslt_300/1000/2000 once this runs
+ANNOTATIONS_FILE = os.path.join(DATASET_PATH, SUBSET)
+CLASS_LIST_FILE = os.path.join(DATASET_PATH, "wlasl_class_list.txt")
+
+idx_to_gloss = {}
+with open(CLASS_LIST_FILE) as f:
+    for line in f:
+        line = line.strip()
+        if line:
+            i, gloss = line.split(None, 1)
+            idx_to_gloss[int(i)] = gloss
+
+with open(ANNOTATIONS_FILE) as f:
+    annotations = json.load(f)
+
+# nslt_*.json = {video_id: {"subset": "train"|"val"|"test", "action": [class_idx, start, end]}}
+video_index = {os.path.splitext(fn)[0]: os.path.join(VIDEO_DIR, fn)
+               for fn in os.listdir(VIDEO_DIR)}
+
+records, missing = [], 0
+for vid, meta in annotations.items():
+    path = video_index.get(vid)
+    if path is None:
+        missing += 1
+        continue
+    records.append((path, int(meta["action"][0]), meta["subset"]))
+
+# remap raw class ids to a contiguous 0..N-1 range
+raw_classes = sorted({r[1] for r in records})
+remap = {c: i for i, c in enumerate(raw_classes)}
+num_classes = len(raw_classes)
+
+train_paths, train_labels, val_paths, val_labels = [], [], [], []
+for path, raw, subset in records:
+    if subset == "train":
+        train_paths.append(path); train_labels.append(remap[raw])
+    else:
+        val_paths.append(path); val_labels.append(remap[raw])
+
+print(f"Classes: {num_classes} | usable videos: {len(records)} | missing from disk: {missing}")
+print(f"Sample: {[idx_to_gloss.get(c, c) for c in raw_classes[:10]]}")
+print(f"Train: {len(train_paths)}, Val: {len(val_paths)}")
+
+# ---------- Frame extraction ----------
+def extract_frames(video_path, num_frames=NUM_FRAMES, img_size=IMG_SIZE):
+    cap = cv2.VideoCapture(video_path)
+    frames = []
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    if total_frames == 0:
+        cap.release()
+        return np.zeros((num_frames, img_size, img_size, 3))
+    
+    indices = np.linspace(0, total_frames - 1, num_frames).astype(int)
+    
+    for idx in indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret, frame = cap.read()
+        if ret:
+            frame = cv2.resize(frame, (img_size, img_size))
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frames.append(frame)
+        else:
+            if frames:
+                frames.append(frames[-1])
+            else:
+                frames.append(np.zeros((img_size, img_size, 3)))
+    
+    cap.release()
+    
+    while len(frames) < num_frames:
+        frames.append(frames[-1] if frames else np.zeros((img_size, img_size, 3)))
+    
+    return np.array(frames, dtype=np.float32) / 255.0
+
+# ---------- Data generator (to avoid loading all into memory) ----------
+def frame_generator(video_paths, labels, batch_size, num_frames=NUM_FRAMES, img_size=IMG_SIZE):
+    while True:
+        indices = np.random.permutation(len(video_paths))
+        for start in range(0, len(video_paths), batch_size):
+            end = min(start + batch_size, len(video_paths))
+            batch_paths = [video_paths[i] for i in indices[start:end]]
+            batch_labels = [labels[i] for i in indices[start:end]]
+            
+            batch_frames = []
+            for path in batch_paths:
+                frames = extract_frames(path, num_frames, img_size)
+                batch_frames.append(frames)
+            
+            yield np.array(batch_frames, dtype=np.float32), np.array(batch_labels, dtype=np.int32)
+
+# ---------- Build model ----------
+def build_model(input_shape, num_classes):
+    # Load I3D feature extractor (trainable=False for pre-training)
+    i3d_url = "https://tfhub.dev/deepmind/i3d-kinetics-400/1"
+    inputs = layers.Input(shape=input_shape)
+    x = layers.Rescaling(2.0, offset=-1.0)(inputs)
+    feature_extractor = hub.KerasLayer(i3d_url, trainable=False, output_shape=[1024])
+    features = feature_extractor(x)
+    
+    # Classification head
+    x = layers.Dense(512, activation='relu')(features)
+    x = layers.Dropout(0.3)(x)
+    x = layers.Dense(256, activation='relu')(x)
+    x = layers.Dropout(0.3)(x)
+    outputs = layers.Dense(num_classes, activation='softmax')(x)
+    
+    model = keras.Model(inputs, outputs)
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=0.0001),
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy']
+    )
+    return model
+
+# ---------- Training ----------
+input_shape = (NUM_FRAMES, IMG_SIZE, IMG_SIZE, 3)
+model = build_model(input_shape, num_classes)
+model.summary()
+
+# Callbacks
+os.makedirs(os.path.dirname(MODEL_SAVE_PATH), exist_ok=True)
+callbacks = [
+    keras.callbacks.EarlyStopping(patience=10, restore_best_weights=True, verbose=1),
+    keras.callbacks.ModelCheckpoint(MODEL_SAVE_PATH, monitor='val_accuracy', save_best_only=True, verbose=1),
+    keras.callbacks.ReduceLROnPlateau(patience=5, factor=0.5, verbose=1)
+]
+
+# Generators
+train_gen = frame_generator(train_paths, train_labels, BATCH_SIZE)
+val_gen = frame_generator(val_paths, val_labels, BATCH_SIZE)
+
+steps_per_epoch = max(1, len(train_paths) // BATCH_SIZE)
+validation_steps = max(1, len(val_paths) // BATCH_SIZE)
+
+print(f"Steps per epoch: {steps_per_epoch}, Validation steps: {validation_steps}")
+
+# Train
+history = model.fit(
+    train_gen,
+    steps_per_epoch=steps_per_epoch,
+    epochs=EPOCHS,
+    validation_data=val_gen,
+    validation_steps=validation_steps,
+    callbacks=callbacks,
+    verbose=1
+)
+
+# Save final model
+model.save(MODEL_SAVE_PATH.replace('.h5', '_final.h5'))
+print(f"Pre-training complete. Model saved to {MODEL_SAVE_PATH}")
